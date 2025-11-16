@@ -37,7 +37,7 @@ wsServer.on('connection', (wsClient: any) => {
       userIndex: wsClient.userIndex,
     });
 
-    res.map(({ response, broadcast }: any) => {
+    res.map(({ response, broadcastTo }: any) => {
       if (response.type === 'reg') {
         const index = response.data?.index;
         wsClient.userIndex = index;
@@ -48,18 +48,37 @@ wsServer.on('connection', (wsClient: any) => {
         if (typeof outgoingData !== 'string') {
           outgoingData = JSON.stringify(outgoingData);
         }
-        wsClient.send(
-          JSON.stringify({
-            ...response,
-            data: outgoingData,
-          })
-        );
-        if (broadcast) {
+        // wsClient.send(
+        //   JSON.stringify({
+        //     ...response,
+        //     data: outgoingData,
+        //   })
+        // );
+        if (broadcastTo === 'all') {
           clients.forEach((client) => {
-            if (client !== wsClient && client.readyState === WebSocket.OPEN) {
-              client.send(outgoingData);
+            if (client.readyState === WebSocket.OPEN) {
+              client.send(
+                JSON.stringify({
+                  ...response,
+                  data: outgoingData,
+                })
+              );
             }
           });
+        } else if (broadcastTo === 'client') {
+          wsClient.send(
+            JSON.stringify({
+              ...response,
+              data: outgoingData,
+            })
+          );
+        } else {
+          wsClient.send(
+            JSON.stringify({
+              ...response,
+              data: outgoingData,
+            })
+          );
         }
       } catch (err) {
         console.log(err);

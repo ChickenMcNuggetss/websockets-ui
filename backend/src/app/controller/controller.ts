@@ -14,7 +14,7 @@ export class Controller {
       const rooms = this.updateRoom();
       const winners = this.updateWinners({ name: player.data.name, wins: 0 });
       return [
-        { response: player, broadcast: false },
+        { response: player, broadcastTo: 'client' },
         {
           response: rooms,
           broadcastTo: 'all',
@@ -25,15 +25,17 @@ export class Controller {
     create_room: ({ userIndex }: RequestIncoming<any>) => {
       this.createRoom(userIndex);
       const rooms = this.updateRoom();
-      return [{ response: rooms, broadcast: true }];
+      return [{ response: rooms, broadcast: 'all' }];
     },
     add_user_to_room: ({ indexRoom, userIndex }: RequestIncoming<any>) => {
       this.addUserToRoom(indexRoom, userIndex);
-      const room = this.database.rooms.find((room) => room.roomId === indexRoom)
+      const room = this.database.rooms.find((room) => room.roomId === indexRoom);
       room!.status = 'notAvailable';
-      this.createGame(room?.roomUsers ?? []);
+      const res = this.createGame(room?.roomUsers ?? []);
       const rooms = this.updateRoom();
-      return [{ response: rooms, broadcast: true }];
+      return [{ response: rooms, broadcastTo: 'all' },
+        {response: res, broadcastTo: 'room'}
+      ];
     },
   };
 
@@ -155,6 +157,17 @@ export class Controller {
       }),
     };
     this.database.games.push(newGame);
+    return newGame.playersId.map((player) => {
+      return {
+        type: 'create_game',
+        data: {
+          idGame: newGame.gameId,
+          idPlayer: player.playerId,
+        },
+        id: 0,
+        userIndex: player.userIndex
+      };
+    });
   }
 
   private updateRoom() {
