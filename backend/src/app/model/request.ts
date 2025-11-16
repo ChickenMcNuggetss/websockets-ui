@@ -3,4 +3,5 @@ export interface RequestIncoming<T> {
   data: T;
   id: 0;
   userIndex: string | null;
+  indexRoom: string;
 }

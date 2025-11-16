@@ -10,18 +10,31 @@ export class Controller {
 
   public controller: Record<string, ({ data }: RequestIncoming<any> | any) => any> = {
     reg: ({ type, data }: RequestIncoming<User>) => {
-      return { response: this.registerPlayer(type, data), broadcast: false };
-    }, // should do update_room update_winners
-    update_winners: ({ type, data }: RequestIncoming<Winner>) => {
-      return { response: this.updateWinners(type, data), broadcast: true };
+      const player = this.registerPlayer(type, data);
+      const rooms = this.updateRoom();
+      const winners = this.updateWinners({ name: player.data.name, wins: 0 });
+      return [
+        { response: player, broadcast: false },
+        {
+          response: rooms,
+          broadcastTo: 'all',
+        },
+        { response: winners, broadcastTo: 'all' },
+      ];
     },
     create_room: ({ userIndex }: RequestIncoming<any>) => {
-      if (userIndex === null) return;
-      return { response: this.createRoom(userIndex), broadcast: false };
+      this.createRoom(userIndex);
+      const rooms = this.updateRoom();
+      return [{ response: rooms, broadcast: true }];
     },
-    // add_user_to_room: ({ userIndex, userRoom }: any) => {
-    //   return { response: this.addUserToRoom(userRoom, userIndex), broadcast: false };
-    // },
+    add_user_to_room: ({ indexRoom, userIndex }: RequestIncoming<any>) => {
+      this.addUserToRoom(indexRoom, userIndex);
+      const room = this.database.rooms.find((room) => room.roomId === indexRoom)
+      room!.status = 'notAvailable';
+      this.createGame(room?.roomUsers ?? []);
+      const rooms = this.updateRoom();
+      return [{ response: rooms, broadcast: true }];
+    },
   };
 
   private registerPlayer(type: string, userData: User) {
@@ -44,16 +57,28 @@ export class Controller {
     };
   }
 
-  private updateWinners(type: string, winnersData: Winner) {
+  private updateWinners(winnersData: Winner) {
     this.database.winners.push(winnersData);
+    return {
+      type: 'update_winners',
+      data: this.database.winners,
+      id: 0,
+    };
   }
 
-  private createRoom(userIndex: string) {
+  private createRoom(userIndex: string | null) {
     const newRoom: Room = {
       roomId: uuidv4(),
       status: 'available',
       roomUsers: [],
     };
+    if (!userIndex) {
+      return {
+        type: 'create_room',
+        data: { error: true, errorText: 'Please, relogin' },
+        id: 0,
+      };
+    }
     this.database.rooms.push(newRoom);
     this.addUserToRoom(newRoom.roomId, userIndex);
     return {
@@ -66,9 +91,16 @@ export class Controller {
     };
   }
 
-  private addUserToRoom(roomId: string, userIndex: string) {
+  private addUserToRoom(roomId: string, userIndex: string | null) {
     const room = this.database.rooms.find((room) => room.roomId === roomId);
     const userToAdd = this.database.users.find((user) => user.index === userIndex);
+    if (!userIndex) {
+      return {
+        type: 'add_user_to_room',
+        data: { error: true, errorText: 'Please, relogin' },
+        id: 0,
+      };
+    }
     if (!room) {
       return {
         type: 'add_user_to_room',
@@ -77,7 +109,7 @@ export class Controller {
       };
     }
 
-    if (room.roomUsers.length >= 2) {
+    if (room.roomUsers?.length >= 2) {
       return {
         type: 'add_user_to_room',
         data: { error: true, errorText: 'This room is no longer available' },
@@ -92,19 +124,22 @@ export class Controller {
         id: 0,
       };
     }
-    room.roomUsers.push({ index: userIndex, name: userToAdd?.name ?? '' });
+    const isAlreadyInTheRoom = !!room.roomUsers.find((user) => user.index === userToAdd.index);
+    if (isAlreadyInTheRoom) {
+      return {
+        type: 'add_user_to_room',
+        data: { error: true, errorText: 'The user is already in the room' },
+        id: 0,
+      };
+    }
 
-    if (room.roomUsers?.length === 2) {
-      this.database.rooms.find((room) => room.roomId === roomId)!.status = 'notAvailable';
-
-      this.createGame();
+    if (room.roomUsers?.length < 2) {
+      room.roomUsers.push({ index: userIndex, name: userToAdd?.name ?? '' });
     }
 
     return {
       type: 'add_user_to_room',
       data: {
-        roomId: room.roomId,
-        roomUsers: room.roomUsers,
         error: false,
         errorText: '',
       },
@@ -112,7 +147,21 @@ export class Controller {
     };
   }
 
-  private createGame() {
+  private createGame(users: { name: string; index: string }[]) {
+    const newGame = {
+      gameId: uuidv4(),
+      playersId: users.map((user) => {
+        return { userIndex: user.index, playerId: uuidv4() };
+      }),
+    };
+    this.database.games.push(newGame);
+  }
 
+  private updateRoom() {
+    return {
+      type: 'update_room',
+      data: this.database.rooms.filter((room) => room.status === 'available'),
+      id: 0,
+    };
   }
 }

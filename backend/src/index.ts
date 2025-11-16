@@ -11,14 +11,13 @@ const userConnections = new Map<string, WebSocket>();
 wsServer.on('connection', (wsClient: any) => {
   const router = new Router();
   let data = '';
-  console.log(wsClient, 'wsClient');
   const clients = wsServer.clients;
   wsClient.userIndex = null;
   wsClient.on('message', (message: RawData) => {
     try {
       data = message.toString();
     } catch (err) {
-      console.log(err, 888);
+      console.log(err);
     }
 
     const parsedData: RequestIncoming<any> = JSON.parse(data);
@@ -38,36 +37,34 @@ wsServer.on('connection', (wsClient: any) => {
       userIndex: wsClient.userIndex,
     });
 
-    if (res?.response?.type === 'reg') {
-      const index = res?.response?.data?.index;
-      wsClient.userIndex = index;
-      userConnections.set(index, wsClient)
-      console.log(wsClient.userIndex, 'userIndex');
-    }
-    try {
-      let outgoingData = res?.response?.data ?? '{}';
-      const data = JSON.stringify(res?.response);
-      if (typeof outgoingData !== 'string') {
-        outgoingData = JSON.stringify(outgoingData);
+    res.map(({ response, broadcast }: any) => {
+      if (response.type === 'reg') {
+        const index = response.data?.index;
+        wsClient.userIndex = index;
+        userConnections.set(index, wsClient);
       }
-
-      wsClient.send(
-        JSON.stringify({
-          ...res?.response,
-          data: outgoingData,
-        })
-      );
-
-      if (res?.broadcast) {
-        clients.forEach((client) => {
-          if (client !== wsClient && client.readyState === WebSocket.OPEN) {
-            client.send(outgoingData);
-          }
-        });
+      try {
+        let outgoingData = response.data ?? '{}';
+        if (typeof outgoingData !== 'string') {
+          outgoingData = JSON.stringify(outgoingData);
+        }
+        wsClient.send(
+          JSON.stringify({
+            ...response,
+            data: outgoingData,
+          })
+        );
+        if (broadcast) {
+          clients.forEach((client) => {
+            if (client !== wsClient && client.readyState === WebSocket.OPEN) {
+              client.send(outgoingData);
+            }
+          });
+        }
+      } catch (err) {
+        console.log(err);
       }
-    } catch (err) {
-      console.log(err);
-    }
+    });
   });
 
   wsClient.on('close', () => {
