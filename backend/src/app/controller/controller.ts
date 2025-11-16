@@ -12,7 +12,7 @@ export class Controller {
       return {response: this.registerPlayer(type, data), broadcast: false}}, // should do update_room update_winners
     update_winners: ({ type, data }: RequestIncoming<Winner>) => {return {response: this.updateWinners(type, data), broadcast: true}},
     create_room: ({ data }: RequestIncoming<any>) => this.createRoom(),
-    // add_user_to_room: () => 
+    add_user_to_room: () => this.addUserToRoom()
   };
 
   private registerPlayer(type: string, userData: User) {
