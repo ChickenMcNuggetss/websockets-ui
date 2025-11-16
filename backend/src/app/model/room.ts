@@ -1,6 +1,7 @@
 import { User } from "./user.ts";
 
 export interface Room {
-  roomId: number;
-  roomUsers: User[];
+  status: 'available' | 'notAvailable';
+  roomId: string;
+  roomUsers: {name: string, index: string}[];
 }
