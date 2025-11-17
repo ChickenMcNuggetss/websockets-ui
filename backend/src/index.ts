@@ -37,7 +37,7 @@ wsServer.on('connection', (wsClient: any) => {
       userIndex: wsClient.userIndex,
     });
 
-    res.map(({ response, broadcastTo }: any) => {
+    res.map(({ response, broadcastTo, meta}: any) => {
       if (response.type === 'reg') {
         const index = response.data?.index;
         wsClient.userIndex = index;
@@ -65,14 +65,14 @@ wsServer.on('connection', (wsClient: any) => {
               );
             }
           });
-        } else if (broadcastTo === 'client') {
-          wsClient.send(
-            JSON.stringify({
-              ...response,
-              data: outgoingData,
-            })
-          );
-        } else {
+        } else if (broadcastTo === 'room') {
+            userConnections.get(meta.userIndex)?.send(
+              JSON.stringify({
+                ...response,
+                data: outgoingData,
+              })
+            );
+        } else if ( broadcastTo === 'client') {
           wsClient.send(
             JSON.stringify({
               ...response,

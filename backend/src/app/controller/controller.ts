@@ -25,16 +25,25 @@ export class Controller {
     create_room: ({ userIndex }: RequestIncoming<any>) => {
       this.createRoom(userIndex);
       const rooms = this.updateRoom();
-      return [{ response: rooms, broadcast: 'all' }];
+      return [{ response: rooms, broadcastTo: 'all' }];
     },
-    add_user_to_room: ({ indexRoom, userIndex }: RequestIncoming<any>) => {
-      this.addUserToRoom(indexRoom, userIndex);
-      const room = this.database.rooms.find((room) => room.roomId === indexRoom);
-      room!.status = 'notAvailable';
-      const res = this.createGame(room?.roomUsers ?? []);
+    add_user_to_room: ({ data, userIndex }) => {
+      const result = this.addUserToRoom(data.indexRoom, userIndex);
+      if (result.data.error) {
+        return [{ response: result, broadcastTo: 'client' }];
+      }
+      const room = this.database.rooms.find((room) => {
+        console.log(room.roomId, 'room.roomId');
+        return room.roomId === data.indexRoom;
+      });
+      if (room && room.roomUsers.length === 2) {
+        room.status = 'notAvailable';
+      }
+      const game = this.createGame(room?.roomUsers ?? []);
       const rooms = this.updateRoom();
-      return [{ response: rooms, broadcastTo: 'all' },
-        {response: res, broadcastTo: 'room'}
+      return [
+        { response: rooms, broadcastTo: 'all' },
+        ...game,
       ];
     },
   };
@@ -51,7 +60,7 @@ export class Controller {
       type,
       data: {
         name: user?.name ?? userData.name,
-        index: user?.name ?? index,
+        index: user?.index ?? index,
         error: false, // error if there is no required fields
         errorText: '',
       },
@@ -60,7 +69,10 @@ export class Controller {
   }
 
   private updateWinners(winnersData: Winner) {
-    this.database.winners.push(winnersData);
+    const winner = this.database.winners.find((winner) => winner.name === winnersData.name);
+    if (!winner) {
+      this.database.winners.push(winnersData);
+    }
     return {
       type: 'update_winners',
       data: this.database.winners,
@@ -69,10 +81,18 @@ export class Controller {
   }
 
   private createRoom(userIndex: string | null) {
+    const user = this.database.users.find((user) => user.index === userIndex);
+    if (!user) {
+      return {
+        type: 'create_room',
+        data: { error: true, errorText: 'Please, relogin' },
+        id: 0,
+      };
+    }
     const newRoom: Room = {
       roomId: uuidv4(),
       status: 'available',
-      roomUsers: [],
+      roomUsers: [{ name: user?.name, index: user?.index }],
     };
     if (!userIndex) {
       return {
@@ -82,7 +102,6 @@ export class Controller {
       };
     }
     this.database.rooms.push(newRoom);
-    this.addUserToRoom(newRoom.roomId, userIndex);
     return {
       type: 'create_room',
       data: {
@@ -112,6 +131,7 @@ export class Controller {
     }
 
     if (room.roomUsers?.length >= 2) {
+      room.status = 'notAvailable';
       return {
         type: 'add_user_to_room',
         data: { error: true, errorText: 'This room is no longer available' },
@@ -159,13 +179,16 @@ export class Controller {
     this.database.games.push(newGame);
     return newGame.playersId.map((player) => {
       return {
-        type: 'create_game',
-        data: {
-          idGame: newGame.gameId,
-          idPlayer: player.playerId,
+        response: {
+          type: 'create_game',
+          data: {
+            idGame: newGame.gameId,
+            idPlayer: player.playerId,
+          },
+          id: 0,
         },
-        id: 0,
-        userIndex: player.userIndex
+        broadcastTo: 'room',
+        meta: { userIndex: player.userIndex },
       };
     });
   }
